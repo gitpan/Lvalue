@@ -19,11 +19,11 @@ Lvalue - add lvalue getters and setters to existing objects
 
 =head1 VERSION
 
-version 0.1
+version 0.11
 
 =cut
 
-our $VERSION = '0.1';
+our $VERSION = '0.11';
 
 
 =head1 SYNOPSIS
@@ -73,9 +73,11 @@ below (which can all also be called as methods of Lvalue)
 
 =head1 FUNCTIONS
 
-=head2 wrap
+=over 4
 
-=head2 lvalue
+=item wrap OBJECT
+
+=item lvalue OBJECT
 
 wrap an object with lvalue getters / setters
 
@@ -105,7 +107,7 @@ function, can lead to some nice code:
 
     lvalue my $obj = NormalObject->new;
 
-    $obj->value = '';
+    $obj->value = 5;
 
 =cut
 
@@ -148,9 +150,9 @@ sub wrap {
         : $_[$#_] = $wrapped
 }}
 
-=head2 unwrap
+=item unwrap LVALUE_OBJECT
 
-=head2 rvalue
+=item rvalue LVALUE_OBJECT
 
 returns the original object
 
@@ -213,6 +215,7 @@ package
     BEGIN {*FETCH = \&STORE}
 
 
+=back
 
 =head1 AUTHOR
 
