@@ -4,12 +4,12 @@ package Lvalue;
     use Carp;
     use Scalar::Util qw/reftype/;
     require overload;
-	require Exporter;
-	our @ISA = 'Exporter';
+    require Exporter;
+    our @ISA = 'Exporter';
     our %EXPORT_TAGS = (all => [
       our @EXPORT_OK = qw/wrap lvalue unwrap rvalue/
     ]);
-	our $VERSION = '0.20';
+    our $VERSION = '0.21';
 
 =head1 NAME
 
@@ -17,7 +17,7 @@ Lvalue - add lvalue getters and setters to existing objects
 
 =head1 VERSION
 
-version 0.20
+version 0.21
 
 =head1 SYNOPSIS
 
@@ -42,7 +42,7 @@ the :lvalue subroutine attribute.
 
     $obj->value = 10;
 
-    print $obj->value; 	 # prints 10
+    print $obj->value;   # prints 10
 
     $_ += 2 for $obj->value;
 
@@ -69,33 +69,33 @@ below (which can all also be called as methods of Lvalue)
 
 =cut
 
-	sub overload {
-		my ($object, $proxy) = @_;
-		my $pkg = ref $object;
-		my $overloader = sub {
-			my $op = shift;
-			sub {
-				if (my $sub = overload::Method($pkg, $op)) {
-					@_ = ($object, @_[1, 2]);
-					goto &$sub;
-				}
-				Carp::croak "no overload method '$op' in $pkg";
-			}
-		};
-		no strict 'refs';
-		my $fallback = ${$pkg.'::()'};
+    sub overload {
+        my ($object, $proxy) = @_;
+        my $pkg = ref $object;
+        my $overloader = sub {
+            my $op = shift;
+            sub {
+                if (my $sub = overload::Method($pkg, $op)) {
+                    @_ = ($object, @_[1, 2]);
+                    goto &$sub;
+                }
+                Carp::croak "no overload method '$op' in $pkg";
+            }
+        };
+        no strict 'refs';
+        my $fallback = ${$pkg.'::()'};
 
-		my $overload = join ', ' =>
-			defined $fallback ? 'fallback => $fallback' : (),
-			map "'$_' => \$overloader->('$_')" =>
-				grep s/^\((?=..)// => keys %{$pkg.'::'};
+        my $overload = join ', ' =>
+            defined $fallback ? 'fallback => $fallback' : (),
+            map "'$_' => \$overloader->('$_')" =>
+                grep s/^\((?=..)// => keys %{$pkg.'::'};
 
-		eval qq {package $proxy;
-			our \@ISA = 'Lvalue::Loader';
-			use overload $overload;
-		} or Carp::carp "Lvalue: overloading not preserved for $pkg, "
-					  . "bug reports or patches welcome.\n  $@";
-	}
+        eval qq {package $proxy;
+            our \@ISA = 'Lvalue::Loader';
+            use overload $overload;
+        } or Carp::carp "Lvalue: overloading not preserved for $pkg, "
+                      . "bug reports or patches welcome.\n  $@";
+    }
 
 =item C<wrap OBJECT>
 
@@ -132,19 +132,19 @@ function, can lead to some nice code:
     $obj->value = 5;
 
 =cut
-	{my $num = 0;
-	sub wrap {
-		my ($object, $proxy) = ($_[$#_], 'Lvalue::Loader');
+    {my $num = 0;
+    sub wrap {
+        my ($object, $proxy) = ($_[$#_], 'Lvalue::Loader');
 
-		if (overload::Overloaded $object) {
-			overload $object
-				  => $proxy = 'Lvalue::Loader::_' . $num++
-		}
-		bless my $wrapped = \$object => $proxy;
-		defined wantarray
-			? $wrapped
-			: $_[$#_] = $wrapped
-	}}
+        if (overload::Overloaded $object) {
+            overload $object
+                  => $proxy = 'Lvalue::Loader::_' . $num++
+        }
+        bless my $wrapped = \$object => $proxy;
+        defined wantarray
+            ? $wrapped
+            : $_[$#_] = $wrapped
+    }}
 
 
 =item C<unwrap LVALUE_OBJECT>
@@ -155,26 +155,26 @@ returns the original object
 
 =cut
 
-	sub unwrap {
-		my $wrapped = $_[$#_];
+    sub unwrap {
+        my $wrapped = $_[$#_];
 
-		croak "unwrap only takes objects wrapped by this module"
-			unless (ref $wrapped) =~ /^Lvalue::Loader (?: ::_\d )? $/x;
+        croak "unwrap only takes objects wrapped by this module"
+            unless (ref $wrapped) =~ /^Lvalue::Loader (?: ::_\d )? $/x;
 
-		defined wantarray
-			? $$wrapped
-			: $_[$#_] = $$wrapped
-	}
+        defined wantarray
+            ? $$wrapped
+            : $_[$#_] = $$wrapped
+    }
 
-	BEGIN {
-		*lvalue = \&wrap;
-		*rvalue = \&unwrap;
-	}
+    BEGIN {
+        *lvalue = \&wrap;
+        *rvalue = \&unwrap;
+    }
 
-	my $no = sub {
-		local $Carp::CarpLevel = 1;
-		Carp::croak "no method '$_[1]' on '$_[0]'"
-	};
+    my $no = sub {
+        local $Carp::CarpLevel = 1;
+        Carp::croak "no method '$_[1]' on '$_[0]'"
+    };
 
 {package
     Lvalue::Loader;
@@ -185,12 +185,12 @@ returns the original object
         if ($method eq 'DESTROY') {
             $object->DESTROY if $object->can('DESTROY');
             return
-		}
-		if (@_ or not defined wantarray) {
-			unshift @_, $object;
-			goto &{$object->can($method)
-			  or   $object->$no($method)}
-		}
+        }
+        if (@_ or not defined wantarray) {
+            unshift @_, $object;
+            goto &{$object->can($method)
+              or   $object->$no($method)}
+        }
         tie my $tied => 'Lvalue::Tied', [$object, $method];
         $tied
     }
@@ -201,7 +201,7 @@ returns the original object
             my $object = ${+shift};
             unshift @_, $object;
             goto &{$object->can($method)
-			  or   $object->$no($method)}
+              or   $object->$no($method)}
         }
     }
 }
@@ -211,11 +211,11 @@ returns the original object
     use Carp;
     sub TIESCALAR {bless pop}
     sub STORE {
-		my ($object, $method) = @{$_[0]};
-		splice @_, 0, 1, $object;
+        my ($object, $method) = @{$_[0]};
+        splice @_, 0, 1, $object;
 
-		goto &{$object->can($method)
-		  or   $object->$no($method)}
+        goto &{$object->can($method)
+          or   $object->$no($method)}
     }
     BEGIN {*FETCH = \&STORE}
 }
