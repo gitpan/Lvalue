@@ -4,14 +4,12 @@ package Lvalue;
     use Carp;
     use Scalar::Util qw/reftype/;
     require overload;
-
+	require Exporter;
+	our @ISA = 'Exporter';
     our %EXPORT_TAGS = (all => [
       our @EXPORT_OK = qw/wrap lvalue unwrap rvalue/
     ]);
-    eval "sub $_ {
-        require Exporter;
-        goto &{ Exporter->can('$_') }
-    }" for qw/import unimport/;
+	our $VERSION = '0.20';
 
 =head1 NAME
 
@@ -19,12 +17,7 @@ Lvalue - add lvalue getters and setters to existing objects
 
 =head1 VERSION
 
-version 0.11
-
-=cut
-
-our $VERSION = '0.11';
-
+version 0.20
 
 =head1 SYNOPSIS
 
@@ -49,11 +42,11 @@ the :lvalue subroutine attribute.
 
     $obj->value = 10;
 
-    print $obj->value; # prints 10
+    print $obj->value; 	 # prints 10
 
     $_ += 2 for $obj->value;
 
-    print $obj->value; # prints 12
+    print $obj->value;   # prints 12
 
 =head1 EXPORT
 
@@ -70,14 +63,43 @@ below (which can all also be called as methods of Lvalue)
 
     $obj->value = 6; # dies
 
-
 =head1 FUNCTIONS
 
 =over 4
 
-=item wrap OBJECT
+=cut
 
-=item lvalue OBJECT
+	sub overload {
+		my ($object, $proxy) = @_;
+		my $pkg = ref $object;
+		my $overloader = sub {
+			my $op = shift;
+			sub {
+				if (my $sub = overload::Method($pkg, $op)) {
+					@_ = ($object, @_[1, 2]);
+					goto &$sub;
+				}
+				Carp::croak "no overload method '$op' in $pkg";
+			}
+		};
+		no strict 'refs';
+		my $fallback = ${$pkg.'::()'};
+
+		my $overload = join ', ' =>
+			defined $fallback ? 'fallback => $fallback' : (),
+			map "'$_' => \$overloader->('$_')" =>
+				grep s/^\((?=..)// => keys %{$pkg.'::'};
+
+		eval qq {package $proxy;
+			our \@ISA = 'Lvalue::Loader';
+			use overload $overload;
+		} or Carp::carp "Lvalue: overloading not preserved for $pkg, "
+					  . "bug reports or patches welcome.\n  $@";
+	}
+
+=item C<wrap OBJECT>
+
+=item C<lvalue OBJECT>
 
 wrap an object with lvalue getters / setters
 
@@ -110,71 +132,51 @@ function, can lead to some nice code:
     $obj->value = 5;
 
 =cut
+	{my $num = 0;
+	sub wrap {
+		my ($object, $proxy) = ($_[$#_], 'Lvalue::Loader');
 
-{my $num = 0;
-sub wrap {
-    my ($object, $proxy) = ($_[$#_], 'Lvalue::Loader');
+		if (overload::Overloaded $object) {
+			overload $object
+				  => $proxy = 'Lvalue::Loader::_' . $num++
+		}
+		bless my $wrapped = \$object => $proxy;
+		defined wantarray
+			? $wrapped
+			: $_[$#_] = $wrapped
+	}}
 
-    if (overload::Overloaded($object)) {
-        $proxy  = 'Lvalue::Loader::_'. $num++;
-        my $pkg = ref $object;
-        my $overloader = sub {
-            my $op = shift;
-            sub {
-                if (my $sub = overload::Method($pkg, $op)) {
-                    @_ = ($object, @_[1, 2]);
-                    goto &$sub;
-                }
-                Carp::croak "no overload method '$op' in $pkg";
-            }
-        };
-        no strict 'refs';
-        my $fallback = ${$pkg.'::()'};
 
-        my $overload = join ', ' =>
-            defined $fallback ? 'fallback => $fallback' : (),
-            map "'$_' => \$overloader->('$_')" =>
-                grep s/^\((?=..)// => keys %{$pkg.'::'};
+=item C<unwrap LVALUE_OBJECT>
 
-        eval qq {package $proxy;
-            our \@ISA = 'Lvalue::Loader';
-            use overload $overload;
-        } or Carp::carp "Lvalue: overloading not preserved for $pkg, "
-                      . "bug reports or patches welcome.\n  $@";
-    }
-
-    bless my $wrapped = \$object => $proxy;
-
-    defined wantarray
-        ? $wrapped
-        : $_[$#_] = $wrapped
-}}
-
-=item unwrap LVALUE_OBJECT
-
-=item rvalue LVALUE_OBJECT
+=item C<rvalue LVALUE_OBJECT>
 
 returns the original object
 
 =cut
 
-sub unwrap {
-    my $wrapped = $_[$#_];
+	sub unwrap {
+		my $wrapped = $_[$#_];
 
-    croak "unwrap only takes objects wrapped by this module"
-        unless (ref $wrapped) =~ /^Lvalue::Loader(?:::_\d)?$/;
+		croak "unwrap only takes objects wrapped by this module"
+			unless (ref $wrapped) =~ /^Lvalue::Loader (?: ::_\d )? $/x;
 
-    defined wantarray
-        ? $$wrapped
-        : $_[$#_] = $$wrapped
-}
+		defined wantarray
+			? $$wrapped
+			: $_[$#_] = $$wrapped
+	}
 
-BEGIN {
-    *lvalue = \&wrap;
-    *rvalue = \&unwrap;
-}
+	BEGIN {
+		*lvalue = \&wrap;
+		*rvalue = \&unwrap;
+	}
 
-package
+	my $no = sub {
+		local $Carp::CarpLevel = 1;
+		Carp::croak "no method '$_[1]' on '$_[0]'"
+	};
+
+{package
     Lvalue::Loader;
     sub AUTOLOAD :lvalue {
         die unless (my $method) = our $AUTOLOAD =~ /([^:]+)$/;
@@ -182,12 +184,13 @@ package
 
         if ($method eq 'DESTROY') {
             $object->DESTROY if $object->can('DESTROY');
-            return}
-
-        (@_ or not defined wantarray) and return
-            wantarray ? my @ret = $object->$method(@_)
-                      : my $ret = $object->$method(@_);
-
+            return
+		}
+		if (@_ or not defined wantarray) {
+			unshift @_, $object;
+			goto &{$object->can($method)
+			  or   $object->$no($method)}
+		}
         tie my $tied => 'Lvalue::Tied', [$object, $method];
         $tied
     }
@@ -197,23 +200,25 @@ package
         *$method = sub {
             my $object = ${+shift};
             unshift @_, $object;
-            goto &{ $object->can($method)
-              or Carp::croak "no method '$method' on '$object'" }
+            goto &{$object->can($method)
+			  or   $object->$no($method)}
         }
     }
+}
 
-package
+{package
     Lvalue::Tied;
     use Carp;
     sub TIESCALAR {bless pop}
     sub STORE {
-        my ($object, $method) = @{(shift)};
-        @_ = ($object, @_);
-        goto &{ $object->can($method)
-                or croak "no method '$method' on $object" }
+		my ($object, $method) = @{$_[0]};
+		splice @_, 0, 1, $object;
+
+		goto &{$object->can($method)
+		  or   $object->$no($method)}
     }
     BEGIN {*FETCH = \&STORE}
-
+}
 
 =back
 
@@ -230,10 +235,6 @@ Please report any bugs or feature requests to C<bug-lvalue at rt.cpan.org>, or t
 the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Lvalue>.  I will be notified, and then you'll
 automatically be notified of progress on your bug as I make changes.
 
-
-=head1 ACKNOWLEDGEMENTS
-
-
 =head1 COPYRIGHT & LICENSE
 
 Copyright 2010 Eric Strom.
@@ -243,7 +244,6 @@ under the terms of either: the GNU General Public License as published
 by the Free Software Foundation; or the Artistic License.
 
 See http://dev.perl.org/licenses/ for more information.
-
 
 =cut
 

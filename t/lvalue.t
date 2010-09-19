@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
-use Test::Simple tests => 13;
+use Test::Simple tests => 15;
 BEGIN {unshift @INC, '../lib'}
 use Lvalue ':all';
 
@@ -11,7 +11,6 @@ print "Lvalue $Lvalue::VERSION\n";
     my $ok = \&ok;
     *ok = sub ($;$) {push @_, shift; goto &$ok}
 }
-
 
 {package Integer;
 	our $VERSION = '0.101';
@@ -31,8 +30,8 @@ ok 'constructor'
 ok 'getter'
 => $int->value == 3;
 
-ok 'setter'
-=> $int->value(234.5434) == 234
+ok 'setter lvalue'
+=> ($int->value = 234.5434) == 234
 && $int->value == 234;
 
 ok 'can'
@@ -43,7 +42,7 @@ ok 'isa'
 
 ok 'DOES'
 => eval {$int->DOES('Integer')}
-|| $@ =~ /^no method 'DOES' on /;
+|| $@ =~ /^no method 'DOES' on 'Integer.+?lvalue.t/;
 
 ok 'VERSION'
 => $int->VERSION eq '0.101';
@@ -53,17 +52,23 @@ $_ /= 6.23 for $int->value;
 ok 'alias'
 => $int->value == 37;
 
-$int->value = 2.71;
+ok 'setter method'
+=> $int->value(2.71) == 2
+&& $int->value == 2;
 
-ok 'setter 2'
-=> $int->value == 2;
+ok 'no method call'
+=> !eval {$int->nomethod(3)}
+&& $@ =~ /^no method 'nomethod' on 'Integer.+?lvalue.t/;
+
+ok 'no method tied'
+=> !eval {$int->nomethod = 3}
+&& $@ =~ /^no method 'nomethod' on 'Integer.+?lvalue.t/;
 
 $int = Lvalue->unwrap( $int );
 
 ok 'unwrap'
 => ref $int eq 'Integer'
 && ! eval {$int->value = 5};
-
 
 eval q{
 	package Integer;
@@ -100,3 +105,9 @@ ok 'post void unwrap'
 && $norm == 6
 && "$norm" eq 'int(6)'
 && eval {$norm->() eq 'code deref overload: 6'};
+
+{package NonSTD;
+	sub new {bless {val => 0}}
+	sub set_val {$_[0]{val} = $_[1]}
+	sub get_val {$_[0]{val}}
+}
